@@ -1,0 +1,6 @@
+.vscode/
+client.json
+credentials.json
+project_id.txt
+venv/
+models/

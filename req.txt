@@ -1,0 +1,9 @@
+geemap
+earthengine-api 
+rasterio
+numpy
+opencv-python
+matplotlib
+torch
+torchvision
+folium
