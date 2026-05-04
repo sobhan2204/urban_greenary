@@ -4,3 +4,5 @@ credentials.json
 project_id.txt
 venv/
 models/
+google_earth.py
+gee_stress_test.py
