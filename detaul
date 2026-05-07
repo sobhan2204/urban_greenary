@@ -1,0 +1,125 @@
+DATASET USED:
+USGS/SRTMGL1_003
+COPERNICUS/DEM/GLO30
+
+MODEL USED:
+1. MultiSSL Pretraining
+2. U-KAN Segmentation Finetuning
+
+Sentinel-2 Tile
+       |
+       v
+MultiSSL Encoder Learns Features
+       |
+Pretrained Encoder Weights
+       |
+       v
+U-KAN Segmentation Network
+       |
+Pixel-wise Terrain Understanding
+       |
+Vegetation Probability Map
+       |
+Vegetation Suitability Score
+
+
+model works on reflectance values
+| Band | Meaning       |
+| ---- | ------------- |
+| B02  | Blue          |
+| B03  | Green         |
+| B04  | Red           |
+| B08  | Near Infrared |
+| B11  | SWIR          |
+
+
+MULTISSL -> hides random patches and then reconstructs them
+vegetation -> snow -> rock
+vegetation -> ??? -> rock : predicts that it was snow
+while reconstucting encoder learns 
+| Learned Feature     | Why Important          |
+| ------------------- | ---------------------- |
+| Snow texture        | Avalanche relevance    |
+| Vegetation patterns | Restoration            |
+| Glacier edges       | Terrain classification |
+| Spectral signatures | Surface type           |
+| Terrain boundaries  | Segmentation           |
+
+rather then learning pixels it learns pattern 
+after training encoder weights are saved
+
+## U-KAN SEGMENTATION MODEL -> Fine tuning 
+GOAL -> Predict terrain class for EVERY pixel
+256×256×5 tile -> 256×256 segmentation mask
+
+Each pixel gets: vegetation probability , snow probability , barren land probability , etc.
+
+encoder -> compresses detail like edges , textures , terrain structures , spectral patterns
+## sementic meaning 
+KAN eneventually learns: 
+High NIR + texture pattern
+= vegetation(this region is likely alpine vegetation)
+
+High visible reflectance + cold terrain texture
+= snow/glacier (this region resembles glacier edge)
+ETC...
+
+
+WHY DO WE NEED KAN ?
+The relationship of terrain is not simple its non-linear , unlike CAN which detect linear data KAN is used to 
+detect non-linear data. In nature, the terrain are non linear KAN models these nonlinear interactions better.
+
+## U-KAN = 
+U-Net = spatial understanding(Shapes , boundry,  segmentation)
+KAN = complex nonlinear relationships(spectral interactions , terrain physics , environmental dependencies)
+
+## FINAL OUTPUT LOOKS LIKE
+| Pixel | Vegetation Probability |
+| ----- | ---------------------- |
+| A     | 0.95                   |
+| B     | 0.10                   |
+| C     | 0.70                   |
+
+## Vegetation
+Typical behavior:
+high NIR reflectance
+moderate green
+specific texture
+
+## Snow
+Typical behavior:
+bright visible bands
+unique SWIR behavior
+
+## Water
+Typical behavior:
+absorbs NIR
+dark spectral response
+
+## Rocky Terrain
+Typical behavior:
+irregular textures
+mixed reflectance
+
+
+## THESE MODEL NEVER UNDERSTAND IF IT IS A MOUNTAIN OR PLAIN FEILD OR WATER IT UNDERSTAND "mathematical patterns associated with terrain types"
+
+Step 1 - Input tile enters network
+Step 2 - Prediction generated
+Step 3 - Prediction compared with pseudo-labels.
+Pseudo-labels derived from:
+NDVI
+NDSI
+NDWI
+Step 4 - Loss function computes error
+Step 5 - Backpropagation updates weights.
+Over Many Epochs
+The model gradually learns:
+terrain semantics
+vegetation structures
+snow boundaries
+spectral relationships
+
+## MultiSSL = general Earth-image understanding
+## U-Net = pixel-wise terrain segmentation
+## KAN = complex nonlinear environmental relationships

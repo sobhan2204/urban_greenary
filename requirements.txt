@@ -9,3 +9,7 @@ folium
 scikit-learn
 pyyaml
 earthengine-api
+geemap
+geopy
+ipyleaflet
+flask

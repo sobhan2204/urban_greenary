@@ -1,245 +1,190 @@
 # Himalayan Snow & Avalanche Susceptibility Mapping for Vegetation Restoration
 
-Maps snow cover, avalanche susceptibility, and vegetation restoration suitability for the **Gangotri** region using **Sentinel-2** multispectral imagery and **DEM** terrain data. The core ML pipeline uses a **MultiSSL** transformer encoder pretraining phase followed by a **U-KAN** decoder for pixel-wise segmentation. A separate rule-based avalanche module scores terrain risk. Both scores combine into a final restoration suitability map.
+This project builds map-based suitability outputs for mountain restoration planning. It combines Sentinel-2 multispectral imagery with DEM terrain data to estimate where vegetation can thrive and where avalanche risk is low enough to support restoration work.
 
-## Workflow
+The repository has two major analysis branches:
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              START (main.py)                                │
-│                        Load config / config/config.yaml                     │
-└─────────────────────────────┬───────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     Data Collection (data_collection)                        │
-│                                                                             │
-│   ┌──────────────────┐   ┌──────────────────┐   ┌───────────────────────┐  │
-│   │  Google Earth Eng │   │   Local Rasters  │   │   Synthetic Data      │  │
-│   │  (Sentinel-2 +   │   │   (manifest CSV/  │   │   (random tiles for   │  │
-│   │   SRTM/DEM)       │   │    JSON + TIFF)  │   │    debugging)         │  │
-│   └──────────────────┘   └──────────────────┘   └───────────────────────┘  │
-│                              │                                               │
-│                              ▼                                               │
-│                 Tiles: {sentinel, dem, bbox, meta}                           │
-└─────────────────────────────┬───────────────────────────────────────────────┘
-                              │
-              ┌───────────────┴───────────────┐
-              ▼                               ▼
-┌───────────────────────────┐   ┌─────────────────────────────────────────────┐
-│   VEGETATION PIPELINE     │   │          AVALANCHE PIPELINE                  │
-│   (vegetation/pipeline)   │   │          (avalanche/pipeline)                │
-│                           │   │                                             │
-│  ┌─────────────────────┐  │   │  ┌────────────────────────────────────────┐ │
-│  │ Load trained model  │  │   │  │ Compute Terrain Features from DEM     │ │
-│  │ (encoder + decoder) │  │   │  │  - Slope (slope/aspect from DEM)     │ │
-│  └──────────┬──────────┘  │   │  │  - Curvature (2nd derivative)        │ │
-│             │              │   │  │  - Elevation                          │ │
-│             ▼              │   │  └─────────────────┬────────────────────┘ │
-│  ┌─────────────────────┐  │   │                    │                       │
-│  │ Predict pixel-class │  │   │                    ▼                       │
-│  │ probabilities       │  │   │  ┌────────────────────────────────────────┐ │
-│  └──────────┬──────────┘  │   │  │ Avalanche Score (weighted sum)        │ │
-│             │              │   │  │  0.4×slope + 0.3×aspect               │ │
-│             ▼              │   │  │  +0.2×curvature +0.1×elevation        │ │
-│  ┌─────────────────────┐  │   │  └─────────────────┬────────────────────┘ │
-│  │ Vegetation Score    │  │   │                    │                       │
-│  │ (mean of vegetation │  │   │                    ▼                       │
-│  │  class probs,       │  │   │  ┌────────────────────────────────────────┐ │
-│  │  masked by elevation│  │   │  │ Save Avalanche Overlay Map            │ │
-│  └──────────┬──────────┘  │   │  │ (data/output/final/avalanche_map.png) │ │
-│             │              │   │  └────────────────────────────────────────┘ │
-│             ▼              │   │                                             │
-│  ┌─────────────────────┐  │   │                                             │
-│  │ Save Vegetation     │  │   │                                             │
-│  │ Overlay Map          │  │   │                                             │
-│  │ (data/output/final/  │  │   │                                             │
-│  │  vegetation_map.png) │  │   │                                             │
-│  └─────────────────────┘  │   │                                             │
-└─────────────┬─────────────┘   └───────────────┬─────────────────────────────┘
-              │                                  │
-              ▼                                  ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Combine Scores (main.py)                              │
-│                                                                             │
-│              Combined = Vegetation_Score × (1 − Avalanche_Score)            │
-│                                                                             │
-│              Per-tile: overlay combined mask on RGB composite                │
-│              Save → data/output/final/combined_map_<tile_id>.png            │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+1. A vegetation pipeline that loads a trained deep learning model, predicts pixel-wise land-cover probabilities, and converts them into a vegetation suitability score.
+2. An avalanche pipeline that derives terrain features from elevation data and computes a rule-based avalanche risk score.
 
-### Training flow (separate from inference)
+The final output is a combined restoration map created from both signals.
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                        Training (vegetation/train.py)                        │
-│                                                                             │
-│  1. Collect tiles  ──────────────────────────────────────────────────────►  │
-│                                                                             │
-│  2. MultiSSL Pretraining                                                    │
-│     ┌──────────────────────────────────────────────────────┐                │
-│     │ Masked Autoencoder on raw tiles                      │                │
-│     │ Randomly mask 35% of patches → transformer predicts  │                │
-│     │ the original pixel values (MSE loss)                 │                │
-│     └──────────────────────┬───────────────────────────────┘                │
-│                            │                                                │
-│                            ▼                                                │
-│                  Frozen encoder weights                                     │
-│                                                                             │
-│  3. U-KAN Finetuning                                                       │
-│     ┌──────────────────────────────────────────────────────┐                │
-│     │ Frozen MultiSSL encoder + trainable U-KAN decoder   │                │
-│     │ Pixel-wise segmentation (5 classes)                  │                │
-│     │ Cross-entropy loss on pseudo-labels (NDVI/NDSI/NDWI) │                │
-│     └──────────────────────┬───────────────────────────────┘                │
-│                            │                                                │
-│                            ▼                                                │
-│                  Save model → models/saved_models/vegetation_model.pkl      │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+## What This Project Does
 
-## Quick Start
+The project is designed for the Himalayan region and focuses on:
 
-### Prerequisites
+- collecting geospatial tiles from Google Earth Engine or local data sources
+- training a vegetation segmentation model with a MultiSSL pretraining stage and a U-KAN decoder
+- computing avalanche susceptibility from slope, aspect, curvature, and elevation
+- generating visualization overlays for vegetation, avalanche safety, and combined restoration suitability
+- serving the workflow through a Flask app for interactive coordinate-based runs
+
+## How It Works
+
+### Training
+
+The training entry point is `vegetation/train.py`.
+
+It runs in two phases:
+
+1. MultiSSL pretraining learns image representations with masked patch reconstruction.
+2. U-KAN finetuning uses the pretrained encoder and trains a segmentation decoder with pseudo-labels derived from vegetation indices such as NDVI, NDSI, and NDWI.
+
+The trained model is saved to `models/saved_models/vegetation_model.pkl`.
+
+### Inference
+
+The main batch inference entry point is `main.py`.
+
+At runtime it:
+
+1. loads configuration from `config/config.yaml`
+2. collects tiles for the configured bounding boxes
+3. runs the vegetation pipeline
+4. runs the avalanche pipeline
+5. combines the scores into a final suitability map
+
+For interactive use, `app.py` exposes a Flask app with API routes that can trigger the pipeline for a clicked coordinate.
+
+### Scoring Logic
+
+- Vegetation score: derived from the predicted probability of the vegetation class, with elevation-based masking.
+- Avalanche score: derived from a weighted terrain model using slope, aspect, curvature, and elevation.
+- Combined score: calculated as vegetation suitability multiplied by $(1 - \text{avalanche risk})$.
+
+Higher combined values indicate areas that are better candidates for restoration.
+
+## Tech Stack
+
+### Core Language and Runtime
 
 - Python 3.10+
-- Google Earth Engine account (for `gee` data provider)
 
-### Setup
+### Machine Learning
 
-    pip install -r requirements.txt
+- PyTorch
+- Torchvision
+- scikit-learn
 
-### Configure
+### Geospatial and Remote Sensing
 
-Edit `config/config.yaml` to set:
+- Google Earth Engine API
+- geemap
+- rasterio
+- geopandas
+- geopy
+- ipyleaflet
 
-- **Bounding boxes** — target areas under `data_collection.bounding_boxes`
-- **Date windows** — Sentinel-2 acquisition periods under `data_collection.gee.date_windows`
-- **GEE project** — your project ID under `data_collection.gee.project_id`
-- **Device** — `cpu` or `cuda` under `model.training.device`
-- **Thresholds** — scoring/overlay cutoffs under `scoring` and `visualization`
+### Data and Scientific Computing
 
-### Train
+- numpy
+- pandas
 
-    python vegetation/train.py
+### Visualization and Web App
 
-Two phases run sequentially:
-1. **MultiSSL pretraining** — masked patch reconstruction on raw tiles (MSE loss)
-2. **U-KAN finetuning** — segmentation with frozen encoder (cross-entropy loss)
+- matplotlib
+- folium
+- Flask
 
-The trained model saves to `models/saved_models/vegetation_model.pkl`.
+### Configuration
 
-### Run inference
+- PyYAML
 
-    python main.py
+## Repository Structure
 
-This runs the full inference pipeline — data collection → vegetation scoring → avalanche scoring → combined map generation.
-
-## Project Structure
-
-```
-├── config/
-│   └── config.yaml              # All paths, hyperparameters, thresholds
-├── data/
-│   ├── raw/                     # Raw downloaded tiles
-│   ├── processed/               # Preprocessed arrays
-│   └── output/
-│       └── final/               # Final overlay maps
-├── models/
-│   └── saved_models/            # Trained model checkpoints
-├── vegetation/
-│   ├── data_loader.py           # Dataset classes (PretrainDataset, SegmentationDataset)
-│   ├── labeling.py              # Pseudo-label generation from NDVI/NDSI/NDWI indices
-│   ├── model.py                 # MultiSSL encoder, U-KAN decoder, pretrainer/segmenter
-│   ├── preprocessing.py         # Normalization, NDVI/NDSI/NDWI computation, stacking
-│   ├── train.py                 # Training entry point (pretrain + finetune)
-│   ├── inference.py             # Model loading, prediction
-│   ├── scoring.py               # Vegetation suitability scoring
-│   ├── visualization.py         # Vegetation overlay map saving
-│   └── pipeline.py              # Orchestrates vegetation inference
-├── avalanche/
-│   ├── data_loader.py           # Tile loading for avalanche module
-│   ├── terrain_features.py      # Slope, aspect, curvature extraction from DEM
-│   ├── scoring.py               # Weighted avalanche risk scoring
-│   ├── visualization.py         # Avalanche overlay map saving
-│   └── pipeline.py              # Orchestrates avalanche inference
-├── utils/
-│   ├── config_loader.py         # YAML loading, path resolution
-│   ├── data_collection.py       # GEE / local / synthetic tile collection
-│   ├── geo_utils.py             # Slope, aspect, curvature computation
-│   ├── io_utils.py              # Logging setup, model save/load helpers
-│   └── visualization_utils.py   # RGB composites, mask overlay, image saving
-├── scripts/
-│   └── gee_stress_test.py       # GEE connection/data retrieval stress test
-├── google_earth.py              # GEE project authentication check
-├── main.py                      # Main inference entry point
-├── requirements.txt
-└── README.md
+```text
+├── app.py                  # Flask app for interactive runs and API routes
+├── main.py                 # Batch inference entry point
+├── vegetation/             # Vegetation training, inference, scoring, and visualization
+├── avalanche/              # Terrain-based avalanche scoring pipeline
+├── utils/                  # Config loading, I/O, geospatial helpers, and data collection
+├── config/config.yaml      # Project paths, model settings, scoring thresholds
+├── data/                   # Raw, processed, and generated outputs
+├── models/saved_models/    # Saved model artifacts
+├── scripts/                # Utility scripts such as GEE stress tests
+├── templates/              # Flask HTML templates
+└── requirements.txt        # Python dependencies
 ```
 
-## Segmentation Classes
+## Key Modules
 
-| Class      | Index | Labeling heuristic                        |
-|------------|-------|-------------------------------------------|
-| Background | 0     | Default fallback                          |
-| Snow       | 1     | NDSI ≥ 0.4                                |
-| Vegetation | 2     | NDVI ≥ 0.2                                |
-| Water      | 3     | NDVI ≤ 0.0                                |
-| Barren     | 4     | NDVI ≤ 0.1 AND NDSI ≤ 0.2                 |
+- `vegetation/pipeline.py` loads the trained model, predicts probabilities, computes vegetation scores, and saves vegetation overlays.
+- `avalanche/pipeline.py` extracts terrain features from DEM data, computes avalanche scores, and saves avalanche overlays.
+- `utils/data_collection.py` handles tile collection from Google Earth Engine, local manifests, or synthetic data.
+- `utils/visualization_utils.py` builds RGB composites and overlays score masks on imagery.
+- `utils/config_loader.py` resolves and loads the YAML configuration.
 
-## Scoring
+## Configuration
 
-### Vegetation score
+Most behavior is controlled from `config/config.yaml`.
 
-Mean probability of the vegetation class across the tile, zeroed out above the elevation limit (default 3500 m). Normalized to `[0, 1]`.
+Common settings you may want to change:
 
-### Avalanche score
+- `data_collection.bounding_boxes` for target regions
+- `data_collection.provider` to switch between `gee`, `local`, and `synthetic`
+- `data_collection.gee.project_id` for your Earth Engine project
+- `model.training.device` for `cpu` or `cuda`
+- `scoring` and `visualization` thresholds for map generation
 
-Weighted combination of normalized terrain features:
+## Installation
 
-| Feature    | Weight | Range              |
-|------------|--------|--------------------|
-| Slope      | 0.4    | 25°–45°           |
-| Aspect     | 0.3    | NW-facing (315–45°) |
-| Curvature  | 0.2    | -0.2 to 0.2       |
-| Elevation  | 0.1    | 2000–5500 m       |
-
-### Combined score
-
-```
-Combined = Vegetation_Score × (1 − Avalanche_Score)
+```bash
+pip install -r requirements.txt
 ```
 
-A higher combined score means the area has good vegetation potential and low avalanche risk — ideal for restoration.
+If you are using Google Earth Engine, make sure your account and project are authenticated before running the pipeline.
+
+## Usage
+
+### Train the vegetation model
+
+```bash
+python vegetation/train.py
+```
+
+### Run batch inference
+
+```bash
+python main.py
+```
+
+### Run the Flask app
+
+```bash
+python app.py
+```
+
+The Flask app serves the interface in `templates/index.html` and exposes API routes for running the pipeline and reverse geocoding coordinates.
 
 ## Outputs
 
-All maps are saved to `data/output/final/`:
+Generated maps are written to `data/output/final/`.
 
-| File                              | Format | Description                        |
-|-----------------------------------|--------|------------------------------------|
-| `vegetation_map_<tile_id>.png`    | PNG    | Vegetation suitability overlay     |
-| `avalanche_map_<tile_id>.png`     | PNG    | Avalanche-safe areas overlay       |
-| `combined_map_<tile_id>.png`      | PNG    | Combined restoration suitability   |
+Typical files include:
 
-## Dependencies
+- `vegetation_map_<tile_id>.png`
+- `avalanche_map_<tile_id>.png`
+- `combined_map_<tile_id>.png`
 
-| Package          | Purpose                              |
-|------------------|--------------------------------------|
-| torch / torchvision | Deep learning framework           |
-| numpy / pandas    | Numerical computation, data handling |
-| rasterio          | GeoTIFF I/O                          |
-| geopandas         | Spatial data handling                |
-| earthengine-api   | Google Earth Engine integration      |
-| scikit-learn      | Preprocessing utilities              |
-| matplotlib        | Map visualization                    |
-| folium            | Interactive map (optional)           |
-| pyyaml            | Config parsing                       |
+## Input Data
+
+The project works with Sentinel-2 multispectral bands and DEM elevation data. The default configuration includes:
+
+- 5 Sentinel-2 channels: `B02`, `B03`, `B04`, `B08`, `B11`
+- 1 DEM channel for terrain analysis
+- 256 x 256 tiles
+
+## Why This Project Exists
+
+The goal is to support restoration planning in steep Himalayan terrain by combining two different perspectives:
+
+- vegetation potential, which tells you where plant growth is likely to succeed
+- avalanche safety, which tells you where terrain instability is lower
+
+Using both together produces a more practical restoration suitability map than using either signal alone.
 
 ## Notes
 
-- **Fully config-driven** — no hardcoded paths, thresholds, or hyperparameters in code. Everything flows through `config/config.yaml`.
-- **Training and inference are separate** — train once with `vegetation/train.py`, then run inference any number of times with `main.py`.
-- **Data providers** — switch between `gee`, `local`, and `synthetic` by changing `data_collection.provider` in config.
+- The project is configuration-driven rather than hardcoded.
+- Training and inference are intentionally separated.
+- GEE, local, and synthetic data providers are all supported through configuration.

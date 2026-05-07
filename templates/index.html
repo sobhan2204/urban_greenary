@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Himalayan Restoration Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #1f2d2a;
+    --muted: #5f6b66;
+    --accent: #1f8a70;
+    --accent-strong: #166e5c;
+    --accent-warm: #e59f1d;
+    --surface: #ffffff;
+    --surface-alt: #f6f4ef;
+    --border: #e5e1d7;
+    --shadow: 0 10px 25px rgba(15, 23, 42, 0.08);
+  }
+
+  body {
+    font-family: 'Sora', sans-serif;
+    background:
+      radial-gradient(1200px 500px at 12% -10%, rgba(217, 243, 231, 0.9) 0%, rgba(217, 243, 231, 0) 60%),
+      radial-gradient(900px 400px at 88% 0%, rgba(255, 231, 204, 0.9) 0%, rgba(255, 231, 204, 0) 55%),
+      #f7f3ee;
+    color: var(--ink);
+    min-height: 100vh;
+  }
+
+  /* ---- Header ---- */
+  header {
+    background: linear-gradient(135deg, #114b44 0%, #1b6d5f 45%, #e59f1d 100%);
+    color: #f8fafc;
+    text-align: center;
+    padding: 24px 16px 18px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+  }
+  header h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 30px;
+    font-weight: 700;
+    letter-spacing: 1px;
+  }
+  header p {
+    font-size: 14px;
+    opacity: 0.9;
+    margin-top: 6px;
+  }
+
+  /* ---- Container ---- */
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 26px 16px 48px;
+  }
+
+  /* ---- Map Section ---- */
+  .map-section {
+    margin-bottom: 24px;
+  }
+  .map-section h2 {
+    font-size: 18px;
+    margin-bottom: 12px;
+    color: var(--accent);
+  }
+  #map {
+    width: 100%;
+    height: 450px;
+    border-radius: 16px;
+    border: 2px solid var(--border);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .coord-info {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: #eef9f4;
+    border: 1px solid #cde7dc;
+    border-radius: 10px;
+    font-size: 14px;
+    display: none;
+  }
+  .coord-info.visible { display: block; }
+  .coord-info code {
+    background: #d9f1e6;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .loc-name {
+    margin-top: 6px;
+    color: var(--accent-strong);
+    font-weight: 500;
+  }
+
+  /* ---- Action Bar ---- */
+  .action-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .action-bar input[type="date"] {
+    padding: 10px 14px;
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    outline: none;
+    background: var(--surface);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .action-bar input[type="date"]:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(31, 138, 112, 0.15);
+  }
+
+  .btn-vegetation {
+    padding: 12px 32px;
+    font-size: 16px;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, #1f8a70 0%, #166e5c 100%);
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 10px 18px rgba(31, 138, 112, 0.28);
+  }
+  .btn-vegetation:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 14px 26px rgba(31, 138, 112, 0.34);
+  }
+  .btn-vegetation:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ---- Status / Loading ---- */
+  .status-msg {
+    margin-left: 8px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 3px solid #e6ebe8;
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- Results ---- */
+  .results-section {
+    display: none;
+  }
+  .results-section.visible { display: block; }
+  .results-section h2 {
+    font-size: 20px;
+    margin-bottom: 16px;
+    color: #1c5c53;
+  }
+  /* ---- Coordinates Section ---- */
+  .coords-section {
+    margin-top: 32px;
+    display: none;
+  }
+  .coords-section.visible { display: block; }
+  .coords-section h3 {
+    font-size: 17px;
+    margin-bottom: 12px;
+    color: #22c55e;
+  }
+  .coords-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+  .coords-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .coords-card-header {
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 14px;
+    text-align: center;
+  }
+  .coords-card-header.veg { background: #f0fdf4; color: #16a34a; }
+  .coords-card-header.aval { background: #fef2f2; color: #dc2626; }
+  .coords-card-header.comb { background: #fff7ed; color: #c2410c; }
+  .coords-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+  .coords-list li {
+    padding: 6px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #f3f4f6;
+    transition: background 0.15s;
+  }
+  .coords-list li:last-child { border-bottom: none; }
+  .coords-list li:hover { background: #f0fdf4; }
+  .coords-list li .dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .coords-list li .dot.veg { background: #22c55e; }
+  .coords-list li .dot.aval { background: #ef4444; }
+  .coords-list li .dot.comb { background: #0f766e; }
+  .coords-list li .coord-text {
+    flex: 1;
+    font-family: 'Courier New', monospace;
+  }
+  .coords-list li .click-hint {
+    color: #9ca3af;
+    font-size: 11px;
+  }
+  .map-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+  }
+  .map-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+    transition: box-shadow 0.2s, transform 0.2s;
+  }
+  .map-card:hover {
+    box-shadow: 0 16px 28px rgba(15, 23, 42, 0.14);
+    transform: translateY(-2px);
+  }
+  .map-card img {
+    width: 100%;
+    display: block;
+  }
+  .map-card .card-label {
+    padding: 12px 16px;
+    font-weight: 600;
+    font-size: 15px;
+    text-align: center;
+  }
+  .card-label.veg { background: #f0fdf4; color: #16a34a; }
+  .card-label.aval { background: #fef2f2; color: #dc2626; }
+  .card-label.comb { background: #fff7ed; color: #c2410c; }
+
+  .meta-row {
+    text-align: center;
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .custom-marker { background: none !important; border: none !important; }
+  .custom-marker div { width: 20px; height: 20px; }
+
+  .results-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+
+  .layer-toggles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 10px;
+  }
+  .toggle-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--muted);
+    margin-right: 4px;
+  }
+  .toggle-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--surface);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .toggle-chip input { accent-color: var(--accent); }
+
+  .analysis-panel {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .analysis-header {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--accent-strong);
+    margin-bottom: 12px;
+  }
+  .metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+  }
+  .metric-card {
+    background: var(--surface-alt);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+  }
+  .metric-card.high { border-left: 4px solid #1f8a70; }
+  .metric-card.medium { border-left: 4px solid #e59f1d; }
+  .metric-card.low { border-left: 4px solid #a3a3a3; }
+  .metric-card.risk { border-left: 4px solid #dc2626; }
+  .metric-card.veg { border-left: 4px solid #16a34a; }
+  .metric-card.slope { border-left: 4px solid #0f766e; }
+  .metric-card.elev { border-left: 4px solid #c2410c; }
+  .metric-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--muted);
+  }
+  .metric-value {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 4px;
+    color: var(--ink);
+  }
+
+  .analysis-copy {
+    margin-top: 14px;
+    background: #f9f4ea;
+    border-radius: 12px;
+    padding: 12px;
+    border: 1px solid #ecdcc6;
+  }
+  .analysis-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #8a6a3d;
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+  .summary-text {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--ink);
+  }
+
+  .analysis-details {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border);
+    display: grid;
+    gap: 6px;
+  }
+  .detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .detail-row span:last-child {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  .analysis-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .download-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #fff;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .download-btn.ghost {
+    background: #fff;
+    color: var(--accent-strong);
+    border: 1px solid var(--border);
+  }
+  .download-btn.disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  .chart-grid {
+    display: grid;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .chart-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px;
+  }
+  .chart-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    font-weight: 600;
+  }
+
+  .map-card.hidden { display: none; }
+
+  .results-section.visible {
+    animation: fadeUp 0.55s ease both;
+  }
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @media (max-width: 980px) {
+    .results-layout { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Himalayan Restoration Intelligence</h1>
+  <p>Vegetation suitability, avalanche safety, and terrain analytics</p>
+</header>
+
+<div class="container">
+
+  <!-- Map Section -->
+  <section class="map-section">
+    <h2>Select a Location</h2>
+    <div id="map"></div>
+    <div class="coord-info" id="coordInfo">
+      <div>Coordinates: <code id="coordText">—</code></div>
+      <div class="loc-name" id="locName"></div>
+    </div>
+  </section>
+
+  <!-- Action Bar -->
+  <div class="action-bar">
+    <input type="date" id="dateInput" value="2025-10-01">
+    <button class="btn-vegetation" id="btnRun" disabled>
+      Run Analysis
+    </button>
+    <span class="status-msg" id="statusMsg"></span>
+  </div>
+
+  <!-- Results Section -->
+  <section class="results-section" id="resultsSection">
+    <h2>Restoration Outputs</h2>
+    <div class="meta-row" id="metaRow"></div>
+    <div class="layer-toggles">
+      <span class="toggle-label">Layers</span>
+      <label class="toggle-chip"><input type="checkbox" id="toggleVeg" checked> Vegetation</label>
+      <label class="toggle-chip"><input type="checkbox" id="toggleAval" checked> Avalanche</label>
+      <label class="toggle-chip"><input type="checkbox" id="toggleComb" checked> Combined</label>
+    </div>
+
+    <div class="results-layout" style="margin-top:16px;">
+      <div class="maps-column">
+        <div class="map-grid">
+          <div class="map-card" id="cardVeg">
+            <img id="imgVeg" src="" alt="Vegetation Map">
+            <div class="card-label veg">Vegetation Map</div>
+          </div>
+          <div class="map-card" id="cardAval">
+            <img id="imgAval" src="" alt="Avalanche Map">
+            <div class="card-label aval">Avalanche Map</div>
+          </div>
+          <div class="map-card" id="cardComb">
+            <img id="imgComb" src="" alt="Combined Map">
+            <div class="card-label comb">Combined Map</div>
+          </div>
+        </div>
+      </div>
+
+      <aside class="analysis-panel" id="analysisPanel">
+        <div class="analysis-header">Analysis Summary</div>
+        <div class="metric-grid">
+          <div class="metric-card high">
+            <div class="metric-label">Highly suitable</div>
+            <div class="metric-value" id="metricHigh">--</div>
+          </div>
+          <div class="metric-card medium">
+            <div class="metric-label">Moderate suitability</div>
+            <div class="metric-value" id="metricModerate">--</div>
+          </div>
+          <div class="metric-card low">
+            <div class="metric-label">Unsuitable</div>
+            <div class="metric-value" id="metricLow">--</div>
+          </div>
+          <div class="metric-card risk">
+            <div class="metric-label">High avalanche risk</div>
+            <div class="metric-value" id="metricAvalanche">--</div>
+          </div>
+          <div class="metric-card veg">
+            <div class="metric-label">Vegetation coverage</div>
+            <div class="metric-value" id="metricVegetation">--</div>
+          </div>
+          <div class="metric-card slope">
+            <div class="metric-label">Mean slope</div>
+            <div class="metric-value" id="metricSlope">--</div>
+          </div>
+          <div class="metric-card elev">
+            <div class="metric-label">Max elevation</div>
+            <div class="metric-value" id="metricElevation">--</div>
+          </div>
+        </div>
+
+        <div class="analysis-copy">
+          <div class="analysis-title">Terrain Intelligence</div>
+          <div class="summary-text" id="analysisSummary">Run the pipeline to generate a terrain summary.</div>
+        </div>
+
+        <div class="analysis-details">
+          <div class="detail-row"><span>Average suitability</span><span id="metricAvgSuitability">--</span></div>
+          <div class="detail-row"><span>Average avalanche risk</span><span id="metricAvgAvalanche">--</span></div>
+          <div class="detail-row"><span>Dominant aspect</span><span id="metricDominantAspect">--</span></div>
+        </div>
+
+        <div class="analysis-actions">
+          <a class="download-btn disabled" id="reportJsonLink" href="#" download>Download JSON</a>
+          <a class="download-btn ghost disabled" id="reportTxtLink" href="#" download>Download TXT</a>
+        </div>
+
+        <div class="chart-grid">
+          <div class="chart-card">
+            <div class="chart-title">Suitability Distribution</div>
+            <canvas id="suitabilityChart" height="160"></canvas>
+          </div>
+          <div class="chart-card" id="aspectChartCard">
+            <div class="chart-title">Aspect Distribution</div>
+            <canvas id="aspectChart" height="160"></canvas>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- Coordinates Section -->
+  <section class="coords-section" id="coordsSection">
+    <h3>Highlighted Coordinates</h3>
+    <div class="coords-grid">
+      <div class="coords-card">
+        <div class="coords-card-header veg">Vegetation Hotspots</div>
+        <ul class="coords-list" id="vegCoords"></ul>
+      </div>
+      <div class="coords-card">
+        <div class="coords-card-header aval">Avalanche Safe Zones</div>
+        <ul class="coords-list" id="avalCoords"></ul>
+      </div>
+      <div class="coords-card">
+        <div class="coords-card-header comb">Combined Suitable Areas</div>
+        <ul class="coords-list" id="combCoords"></ul>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function() {
+  // ---- State ----
+  let selectedLat = null;
+  let selectedLng = null;
+  let marker = null;
+  let suitabilityChart = null;
+  let aspectChart = null;
+
+  function formatMetric(value, suffix, digits) {
+    if (value === null || value === undefined || Number.isNaN(value)) {
+      return '--';
+    }
+    var num = Number(value);
+    if (!isFinite(num)) {
+      return '--';
+    }
+    var decimals = (digits === undefined) ? 1 : digits;
+    return num.toFixed(decimals) + (suffix || '');
+  }
+
+  function setText(id, value) {
+    var el = document.getElementById(id);
+    if (el) {
+      el.textContent = value;
+    }
+  }
+
+  function updateReportLinks(reportUrls) {
+    var jsonLink = document.getElementById('reportJsonLink');
+    var txtLink = document.getElementById('reportTxtLink');
+    if (!jsonLink || !txtLink) return;
+    if (reportUrls && reportUrls.json && reportUrls.txt) {
+      jsonLink.href = reportUrls.json;
+      txtLink.href = reportUrls.txt;
+      jsonLink.classList.remove('disabled');
+      txtLink.classList.remove('disabled');
+    } else {
+      jsonLink.href = '#';
+      txtLink.href = '#';
+      jsonLink.classList.add('disabled');
+      txtLink.classList.add('disabled');
+    }
+  }
+
+  function renderSuitabilityChart(metrics) {
+    var canvas = document.getElementById('suitabilityChart');
+    if (!canvas || !window.Chart) return;
+    var data = [
+      Number(metrics.high_suitability_pct) || 0,
+      Number(metrics.moderate_suitability_pct) || 0,
+      Number(metrics.low_suitability_pct) || 0
+    ];
+    if (suitabilityChart) {
+      suitabilityChart.data.datasets[0].data = data;
+      suitabilityChart.update();
+      return;
+    }
+    suitabilityChart = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: ['High', 'Moderate', 'Low'],
+        datasets: [{
+          data: data,
+          backgroundColor: ['#1f8a70', '#e59f1d', '#9ca3af'],
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' }
+        }
+      }
+    });
+  }
+
+  function renderAspectChart(terrain) {
+    var card = document.getElementById('aspectChartCard');
+    var canvas = document.getElementById('aspectChart');
+    if (!canvas || !window.Chart || !card) return;
+    var dist = terrain && terrain.aspect_distribution ? terrain.aspect_distribution : null;
+    if (!dist) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = 'block';
+    var data = [
+      Number(dist.north) || 0,
+      Number(dist.east) || 0,
+      Number(dist.south) || 0,
+      Number(dist.west) || 0
+    ];
+    if (aspectChart) {
+      aspectChart.data.datasets[0].data = data;
+      aspectChart.update();
+      return;
+    }
+    aspectChart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: ['North', 'East', 'South', 'West'],
+        datasets: [{
+          data: data,
+          backgroundColor: ['#1f8a70', '#3b82f6', '#e59f1d', '#a85532']
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          y: { beginAtZero: true, max: 100 }
+        },
+        plugins: { legend: { display: false } }
+      }
+    });
+  }
+
+  function updateAnalysis(analysis, reportUrls) {
+    var metrics = analysis && analysis.metrics ? analysis.metrics : {};
+    var terrain = analysis && analysis.terrain_statistics ? analysis.terrain_statistics : {};
+
+    setText('metricHigh', formatMetric(metrics.high_suitability_pct, '%', 1));
+    setText('metricModerate', formatMetric(metrics.moderate_suitability_pct, '%', 1));
+    setText('metricLow', formatMetric(metrics.low_suitability_pct, '%', 1));
+    setText('metricAvalanche', formatMetric(metrics.high_avalanche_risk_pct, '%', 1));
+    setText('metricVegetation', formatMetric(metrics.vegetation_coverage_pct, '%', 1));
+    setText('metricSlope', formatMetric(metrics.mean_slope_deg, ' deg', 1));
+    setText('metricElevation', formatMetric(metrics.max_elevation_m, ' m', 0));
+
+    setText('metricAvgSuitability', formatMetric(metrics.average_suitability, '', 2));
+    setText('metricAvgAvalanche', formatMetric(metrics.average_avalanche_risk, '', 2));
+    setText('metricDominantAspect', terrain.dominant_aspect || '--');
+    setText('analysisSummary', analysis && analysis.summary ? analysis.summary : 'Summary will appear after the run completes.');
+
+    updateReportLinks(reportUrls);
+    renderSuitabilityChart(metrics);
+    renderAspectChart(terrain);
+  }
+
+  function setupLayerToggle(toggleId, cardId) {
+    var toggle = document.getElementById(toggleId);
+    var card = document.getElementById(cardId);
+    if (!toggle || !card) return;
+    var apply = function() {
+      card.classList.toggle('hidden', !toggle.checked);
+    };
+    toggle.addEventListener('change', apply);
+    apply();
+  }
+
+  // ---- Leaflet Map ----
+  const map = L.map('map').setView([32.30, 77.20], 9);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+
+  /* ---- Colored marker icons ---- */
+  var markerColors = { veg: '#22c55e', aval: '#ef4444', comb: '#1e40af' };
+
+  setupLayerToggle('toggleVeg', 'cardVeg');
+  setupLayerToggle('toggleAval', 'cardAval');
+  setupLayerToggle('toggleComb', 'cardComb');
+
+  function makeColoredIcon(color) {
+    return L.divIcon({
+      className: 'custom-marker',
+      html: '<div style="width:20px;height:20px;border-radius:50%;background:' + color +
+            ';border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.35);"></div>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 10]
+    });
+  }
+
+  /* ---- Populate coordinate lists ---- */
+  function populateCoords(listId, coords, colorClass) {
+    var list = document.getElementById(listId);
+    list.innerHTML = '';
+    if (!coords || !coords.length) {
+      list.innerHTML = '<li style="cursor:default;color:#9ca3af;">No coordinates</li>';
+      return;
+    }
+    var color = markerColors[colorClass] || '#22c55e';
+    var icon = makeColoredIcon(color);
+    coords.forEach(function(c) {
+      var li = document.createElement('li');
+      li.innerHTML = '<span class="dot ' + colorClass + '"></span>' +
+        '<span class="coord-text">' + c[0].toFixed(4) + ', ' + c[1].toFixed(4) + '</span>' +
+        '<span class="click-hint">click to view</span>';
+      li.addEventListener('click', function() {
+        map.setView([c[0], c[1]], 14);
+        L.marker([c[0], c[1]], {icon: icon}).addTo(map);
+      });
+      list.appendChild(li);
+    });
+  }
+
+  map.on('click', function(e) {
+    selectedLat = parseFloat(e.latlng.lat.toFixed(6));
+    selectedLng = parseFloat(e.latlng.lng.toFixed(6));
+
+    if (marker) map.removeLayer(marker);
+    marker = L.marker([selectedLat, selectedLng]).addTo(map);
+
+    document.getElementById('coordText').textContent =
+      selectedLat + ', ' + selectedLng;
+    document.getElementById('coordInfo').classList.add('visible');
+    document.getElementById('btnRun').disabled = false;
+    document.getElementById('locName').textContent = 'Resolving location...';
+    document.getElementById('statusMsg').textContent = '';
+
+    // Reverse geocode
+    fetch('/api/geocode', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({lat: selectedLat, lng: selectedLng})
+    })
+    .then(r => r.json())
+    .then(loc => {
+      const parts = [loc.location_name, loc.city, loc.country].filter(Boolean);
+      document.getElementById('locName').textContent = parts.join(', ');
+    })
+    .catch(() => {
+      document.getElementById('locName').textContent = '';
+    });
+  });
+
+  // ---- Run Pipeline ----
+  document.getElementById('btnRun').addEventListener('click', function() {
+    const btn = document.getElementById('btnRun');
+    const msg = document.getElementById('statusMsg');
+    const dateVal = document.getElementById('dateInput').value;
+
+    btn.disabled = true;
+    msg.innerHTML = '<span class="spinner"></span> Running analysis... (this may take 30-60 seconds)';
+    document.getElementById('resultsSection').classList.remove('visible');
+    updateAnalysis(null, null);
+
+    fetch('/api/run', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        lat: selectedLat,
+        lng: selectedLng,
+        date: dateVal
+      })
+    })
+    .then(r => r.json())
+    .then(data => {
+      btn.disabled = false;
+      if (data.status === 'error') {
+        msg.innerHTML = '<span style="color:#dc2626;">Error: ' + data.message + '</span>';
+        return;
+      }
+
+      msg.innerHTML = '<span style="color:#1f8a70;">Analysis complete!</span>';
+
+      // Display maps with cache-busting
+      const t = '?t=' + Date.now();
+      document.getElementById('imgVeg').src = data.vegetation_path + t;
+      document.getElementById('imgAval').src = data.avalanche_path + t;
+      document.getElementById('imgComb').src = data.combined_path + t;
+
+      document.getElementById('metaRow').textContent =
+        'Source: ' + data.source +
+        ' | Image date: ' + data.image_date +
+        ' | Location: ' + selectedLat + ', ' + selectedLng;
+
+      updateAnalysis(data.analysis || null, data.report_urls || null);
+      document.getElementById('resultsSection').classList.add('visible');
+
+      // Populate highlighted coordinates
+      var hasCoords = (data.veg_coords && data.veg_coords.length) ||
+                      (data.aval_coords && data.aval_coords.length) ||
+                      (data.comb_coords && data.comb_coords.length);
+
+      if (hasCoords) {
+        populateCoords('vegCoords', data.veg_coords || [], 'veg');
+        populateCoords('avalCoords', data.aval_coords || [], 'aval');
+        populateCoords('combCoords', data.comb_coords || [], 'comb');
+        document.getElementById('coordsSection').classList.add('visible');
+      } else {
+        document.getElementById('coordsSection').classList.remove('visible');
+      }
+
+      document.getElementById('resultsSection').scrollIntoView({behavior: 'smooth'});
+    })
+    .catch(err => {
+      btn.disabled = false;
+      msg.innerHTML = '<span style="color:#dc2626;">Request failed: ' + err + '</span>';
+    });
+  });
+})();
+</script>
+
+</body>
+</html>

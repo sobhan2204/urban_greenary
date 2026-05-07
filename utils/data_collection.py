@@ -451,6 +451,8 @@ def _collect_gee(config: dict) -> list[dict[str, Any]]:
     if not date_windows:
         raise ValueError("data_collection.gee.date_windows is required")
     expand_months = gee_cfg.get("expand_months", 0)
+
+    
     cloud_filters = gee_cfg.get("cloud_filters") or [10, 20, 30, 50]
     cloud_property = gee_cfg["cloud_property"]
     sample_scale = gee_cfg.get("sample_scale", 10)

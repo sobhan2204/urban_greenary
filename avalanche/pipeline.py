@@ -35,6 +35,11 @@ def run_avalanche_pipeline(config: dict, tiles: list[dict[str, Any]]) -> list[di
         mask = score <= overlay_cfg["avalanche_safe_max"]
         save_overlay_map(base_rgb, mask, output_path, tuple(color_cfg["avalanche_safe"]), alpha, dpi)
 
-        results.append({"tile_id": tile["tile_id"], "score": score, "meta": tile.get("meta", {})})
+        results.append({
+            "tile_id": tile["tile_id"],
+            "score": score,
+            "meta": tile.get("meta", {}),
+            "features": features,
+        })
 
     return results

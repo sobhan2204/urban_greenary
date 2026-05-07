@@ -1,8 +1,99 @@
-.vscode/
-client.json
-credentials.json
-project_id.txt
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.pyo
+
+# Virtual Environment
 venv/
+.env/
+.venv/
+.claude
+
+# =========================
+# Jupyter Notebook
+# =========================
+.ipynb_checkpoints/
+
+# =========================
+# VS Code
+# =========================
+.vscode/
+.history/
+
+# =========================
+# Environment Variables
+# =========================
+.env
+*.env
+
+# =========================
+# Logs
+# =========================
+*.log
+logs/
+
+# =========================
+# Build / Distribution
+# =========================
+build/
+dist/
+*.egg-info/
+
+# =========================
+# OS Files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Machine Learning / Models
+# =========================
 models/
-google_earth.py
-gee_stress_test.py
+checkpoints/
+weights/
+*.h5
+*.pt
+*.pth
+*.ckpt
+*.onnx
+
+# =========================
+# Dataset Files
+# =========================
+data/
+datasets/
+*.csv
+*.zip
+*.tar.gz
+
+# =========================
+# Google Earth Engine / Secrets
+# =========================
+credentials.json
+service_account.json
+token.json
+
+# =========================
+# Cache
+# =========================
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# =========================
+# Temporary Files
+# =========================
+tmp/
+temp/
+*.tmp
+
+# =========================
+# Misc
+# =========================
+*.sqlite3
+*.db
