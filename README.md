@@ -54,6 +54,112 @@ For interactive use, `app.py` exposes a Flask app with API routes that can trigg
 
 Higher combined values indicate areas that are better candidates for restoration.
 
+## Technical Details
+
+### Model Overview (MultiSSL + U-KAN)
+
+The vegetation pipeline uses a two-stage model:
+
+1. MultiSSL pretraining to learn general Earth-image features from Sentinel-2 tiles.
+2. U-KAN segmentation finetuning to produce pixel-wise terrain probabilities.
+
+End-to-end flow:
+
+```text
+Sentinel-2 tile (256 x 256 x 5)
+	|
+	v
+MultiSSL encoder learns features (masked patch reconstruction)
+	|
+Pretrained encoder weights
+	|
+	v
+U-KAN segmentation network
+	|
+Pixel-wise terrain understanding
+	|
+Vegetation probability map
+	|
+Vegetation suitability score
+```
+
+### MultiSSL Pretraining (Masked Patch Reconstruction)
+
+MultiSSL hides random patches in the input tile and trains the encoder to reconstruct them. This forces the encoder to learn patterns rather than memorize pixels. During reconstruction, the encoder learns features that are useful for terrain understanding:
+
+| Learned Feature     | Why It Matters          |
+| ------------------- | ----------------------- |
+| Snow texture        | Avalanche relevance     |
+| Vegetation patterns | Restoration suitability |
+| Glacier edges       | Terrain classification  |
+| Spectral signatures | Surface type separation |
+| Terrain boundaries  | Segmentation accuracy   |
+
+After pretraining, the encoder weights are saved and reused in the segmentation stage.
+
+### U-KAN Segmentation (U-Net + KAN)
+
+Goal: predict a terrain class for every pixel.
+
+- Input: 256 x 256 x 5 tile
+- Output: 256 x 256 segmentation mask with per-pixel probabilities
+- Each pixel receives probabilities for vegetation, snow, barren land, and other classes.
+
+Why KAN:
+
+- Terrain relationships are non-linear across spectral bands and textures.
+- KAN models non-linear interactions better than linear feature assumptions in classic CNNs.
+- U-Net provides spatial understanding, while KAN captures complex spectral and environmental dependencies.
+
+### Training Loop and Pseudo-Labels
+
+1. Input tile enters the network.
+2. Prediction is generated.
+3. Prediction is compared with pseudo-labels.
+4. Loss computes the error.
+5. Backpropagation updates weights over many epochs.
+
+Pseudo-labels are derived from vegetation indices such as NDVI, NDSI, and NDWI.
+
+Over time, the model learns terrain semantics, vegetation structures, snow boundaries, and spectral relationships.
+
+### Pixel-wise Interpretation
+
+Example semantic mappings learned by the model:
+
+- High NIR + texture pattern -> vegetation (alpine vegetation signatures)
+- High visible reflectance + cold terrain texture -> snow or glacier edges
+
+Typical spectral behaviors:
+
+- Vegetation: high NIR reflectance, moderate green, specific texture
+- Snow: bright visible bands, unique SWIR behavior
+- Water: absorbs NIR, dark spectral response
+- Rocky terrain: irregular textures, mixed reflectance
+
+The model does not explicitly know if a location is a mountain, plain, or water body. It learns mathematical patterns associated with terrain types.
+
+Example vegetation probability output:
+
+| Pixel | Vegetation Probability |
+| ----- | ---------------------- |
+| A     | 0.95                   |
+| B     | 0.10                   |
+| C     | 0.70                   |
+
+### Avalanche and Aspect Interpretation
+
+- North (315-360, 0-45): colder, snow-accumulating slopes
+- East (45-135): morning sun, moderate conditions
+- South (135-225): warmer, sun-exposed slopes
+- West (225-315): afternoon sun, warm and sometimes dry
+
+Implications:
+
+- Avalanche risk: north-facing slopes retain snow longer and have higher avalanche susceptibility.
+- Vegetation growth: south-facing slopes receive more sun and dry faster; north-facing slopes are cooler and wetter.
+- Restoration planning: aspect guides which slopes are more suitable for planting strategies.
+
 ## Tech Stack
 
 ### Core Language and Runtime
@@ -162,9 +268,18 @@ Generated maps are written to `data/output/final/`.
 
 Typical files include:
 
+- `combined_map_<tile_id>.png`
 - `vegetation_map_<tile_id>.png`
 - `avalanche_map_<tile_id>.png`
-- `combined_map_<tile_id>.png`
+
+
+Sample maps:
+
+![Final output map](data/output/final/vegetation_map_solang_valley.png)
+
+![Vegetation output map](data/output/final/vegetation_map_interactive_32.1287_76.2474.png)
+
+![Avalanche map](data/output/final/combined_map_interactive_32.0910_76.5255.png)
 
 ## Input Data
 
@@ -173,6 +288,21 @@ The project works with Sentinel-2 multispectral bands and DEM elevation data. Th
 - 5 Sentinel-2 channels: `B02`, `B03`, `B04`, `B08`, `B11`
 - 1 DEM channel for terrain analysis
 - 256 x 256 tiles
+
+Datasets used:
+
+- USGS/SRTMGL1_003 for vegetation terrain context
+- COPERNICUS/DEM/GLO30 for height
+
+The vegetation model operates on reflectance values from these Sentinel-2 bands:
+
+| Band | Meaning       |
+| ---- | ------------- |
+| B02  | Blue          |
+| B03  | Green         |
+| B04  | Red           |
+| B08  | Near Infrared |
+| B11  | SWIR          |
 
 ## Why This Project Exists
 
